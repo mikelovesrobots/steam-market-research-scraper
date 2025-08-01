@@ -7,7 +7,6 @@ A Python script that scrapes game data from SteamSpy and analyzes game tags to f
 - Downloads all game data from SteamSpy using a two-phase approach
 - Uses 10 parallel requests for individual game details
 - Caches both paginated lists and individual game details to disk for fast resumption
-- Respects SteamSpy's rate limits (60 seconds for bulk requests, 10 parallel for individual games)
 - Analyzes game tags to calculate statistics:
   - Games count per tag
   - Median user score (positive review percentage)
