@@ -339,6 +339,11 @@ def analyze_tags(games: List[Dict]) -> Dict[str, Dict]:
         total_reviews = positive + negative
         calculated_owners = total_reviews * 30 if total_reviews > 0 else None
 
+        # Calculate estimated revenue (price * calculated_owners)
+        estimated_revenue = None
+        if price is not None and calculated_owners is not None:
+            estimated_revenue = price * calculated_owners
+
         # Extract tags
         tags = extract_tags_from_game(game)
 
@@ -352,6 +357,7 @@ def analyze_tags(games: List[Dict]) -> Dict[str, Dict]:
                     "owners": [],
                     "total_reviews": [],
                     "calculated_owners": [],
+                    "estimated_revenues": [],
                 }
 
             tag_stats[tag]["games"].append(game.get("appid"))
@@ -374,12 +380,15 @@ def analyze_tags(games: List[Dict]) -> Dict[str, Dict]:
             if calculated_owners is not None:
                 tag_stats[tag]["calculated_owners"].append(calculated_owners)
 
+            if estimated_revenue is not None:
+                tag_stats[tag]["estimated_revenues"].append(estimated_revenue)
+
     return tag_stats
 
 
 def calculate_tag_summary(
     tag_stats: Dict[str, Dict],
-) -> List[Tuple[str, int, float, float, float, float, float, float, float]]:
+) -> List[Tuple[str, int, float, float, float, float, float, float, float, float]]:
     """Calculate summary statistics for each tag."""
     summary = []
 
@@ -414,6 +423,11 @@ def calculate_tag_summary(
             if stats["calculated_owners"]
             else 0
         )
+        estimated_revenue_median = (
+            statistics.median(stats["estimated_revenues"])
+            if stats["estimated_revenues"]
+            else 0
+        )
 
         summary.append(
             (
@@ -426,6 +440,7 @@ def calculate_tag_summary(
                 owners_median,
                 total_reviews_median,
                 calculated_owners_median,
+                estimated_revenue_median,
             )
         )
 
@@ -433,11 +448,13 @@ def calculate_tag_summary(
 
 
 def print_tag_analysis(
-    summary: List[Tuple[str, int, float, float, float, float, float, float, float]],
+    summary: List[
+        Tuple[str, int, float, float, float, float, float, float, float, float]
+    ],
 ) -> None:
     """Print tag analysis in tab-delimited format."""
     print(
-        "Name\tGames Count\tUserscore (median)\tPlaytime (mean)\tPlaytime (75th percentile)\tPrice (median)\tOwners (median)\tTotal Reviews (median)\tCalculated Owners (median)"
+        "Name\tGames Count\tUserscore (median)\tPlaytime (mean)\tPlaytime (75th percentile)\tPrice (median)\tOwners (median)\tTotal Reviews (median)\tCalculated Owners (median)\tEstimated Revenue (median)"
     )
 
     # Sort by games count descending
@@ -453,9 +470,10 @@ def print_tag_analysis(
         owners_median,
         total_reviews_median,
         calculated_owners_median,
+        estimated_revenue_median,
     ) in summary:
         print(
-            f"{tag}\t{games_count}\t{userscore_median:.1f}\t{playtime_mean:.0f}\t{playtime_75th:.0f}\t${price_median:.2f}\t{owners_median:.0f}\t{total_reviews_median:.0f}\t{calculated_owners_median:.0f}"
+            f"{tag}\t{games_count}\t{userscore_median:.1f}\t{playtime_mean:.0f}\t{playtime_75th:.0f}\t${price_median:.2f}\t{owners_median:.0f}\t{total_reviews_median:.0f}\t{calculated_owners_median:.0f}\t${estimated_revenue_median:,.0f}"
         )
 
 
