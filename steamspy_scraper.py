@@ -386,6 +386,94 @@ def analyze_tags(games: List[Dict]) -> Dict[str, Dict]:
     return tag_stats
 
 
+def analyze_tag_pairs(games: List[Dict]) -> Dict[Tuple[str, str], Dict]:
+    """Analyze games by tag pairs and calculate statistics for combinations."""
+    tag_pair_stats = {}
+
+    for game in games:
+        # Extract game metrics (same as single tag analysis)
+        positive = game.get("positive", 0) or 0
+        negative = game.get("negative", 0) or 0
+        userscore = calculate_positive_percentage(positive, negative)
+
+        playtime = game.get("median_forever")
+        if playtime is not None and playtime != "":
+            try:
+                playtime = int(playtime)
+            except (ValueError, TypeError):
+                playtime = None
+
+        price = game.get("price")
+        if price is not None and price != "":
+            try:
+                price = int(price) / 100  # Convert cents to dollars
+            except (ValueError, TypeError):
+                price = None
+
+        owners = parse_owner_range(game.get("owners", ""))
+
+        # Calculate total reviews and calculated owners
+        total_reviews = positive + negative
+        calculated_owners = total_reviews * 30 if total_reviews > 0 else None
+
+        # Calculate estimated revenue (price * calculated_owners)
+        estimated_revenue = None
+        if price is not None and calculated_owners is not None:
+            estimated_revenue = price * calculated_owners
+
+        # Extract tags
+        tags = extract_tags_from_game(game)
+
+        # Generate all pairs of tags for this game
+        for i in range(len(tags)):
+            for j in range(i + 1, len(tags)):
+                tag_a, tag_b = sorted(
+                    [tags[i], tags[j]]
+                )  # Sort to ensure consistent ordering
+                tag_pair = (tag_a, tag_b)
+
+                if tag_pair not in tag_pair_stats:
+                    tag_pair_stats[tag_pair] = {
+                        "games": [],
+                        "userscores": [],
+                        "playtimes": [],
+                        "prices": [],
+                        "owners": [],
+                        "total_reviews": [],
+                        "calculated_owners": [],
+                        "estimated_revenues": [],
+                    }
+
+                tag_pair_stats[tag_pair]["games"].append(game.get("appid"))
+
+                if userscore is not None:
+                    tag_pair_stats[tag_pair]["userscores"].append(userscore)
+
+                if playtime is not None:
+                    tag_pair_stats[tag_pair]["playtimes"].append(playtime)
+
+                if price is not None:
+                    tag_pair_stats[tag_pair]["prices"].append(price)
+
+                if owners is not None:
+                    tag_pair_stats[tag_pair]["owners"].append(owners)
+
+                # Always append total_reviews (could be 0)
+                tag_pair_stats[tag_pair]["total_reviews"].append(total_reviews)
+
+                if calculated_owners is not None:
+                    tag_pair_stats[tag_pair]["calculated_owners"].append(
+                        calculated_owners
+                    )
+
+                if estimated_revenue is not None:
+                    tag_pair_stats[tag_pair]["estimated_revenues"].append(
+                        estimated_revenue
+                    )
+
+    return tag_pair_stats
+
+
 def calculate_tag_summary(
     tag_stats: Dict[str, Dict],
 ) -> List[Tuple[str, int, float, float, float, float, float, float, float, float]]:
@@ -447,6 +535,72 @@ def calculate_tag_summary(
     return summary
 
 
+def calculate_tag_pair_summary(
+    tag_pair_stats: Dict[Tuple[str, str], Dict],
+) -> List[Tuple[str, str, int, float, float, float, float, float, float, float, float]]:
+    """Calculate summary statistics for each tag pair."""
+    summary = []
+
+    for tag_pair, stats in tag_pair_stats.items():
+        # Skip pairs with fewer than 5 games to reduce noise
+        if len(stats["games"]) < 5:
+            continue
+        tag_a, tag_b = tag_pair
+        games_count = len(stats["games"])
+
+        userscore_median = (
+            statistics.median(stats["userscores"]) if stats["userscores"] else 0
+        )
+
+        # Calculate mean playtime
+        playtime_mean = statistics.mean(stats["playtimes"]) if stats["playtimes"] else 0
+
+        # Calculate 75th percentile playtime (only for games with playtime > 0)
+        playtimes_with_data = [pt for pt in stats["playtimes"] if pt > 0]
+        if len(playtimes_with_data) >= 4:
+            playtime_75th = statistics.quantiles(playtimes_with_data, n=4)[2]
+        elif playtimes_with_data:
+            playtime_75th = max(playtimes_with_data)  # Use max if too few data points
+        else:
+            playtime_75th = 0
+
+        price_median = statistics.median(stats["prices"]) if stats["prices"] else 0
+        owners_median = statistics.median(stats["owners"]) if stats["owners"] else 0
+
+        # Calculate new metrics
+        total_reviews_median = (
+            statistics.median(stats["total_reviews"]) if stats["total_reviews"] else 0
+        )
+        calculated_owners_median = (
+            statistics.median(stats["calculated_owners"])
+            if stats["calculated_owners"]
+            else 0
+        )
+        estimated_revenue_median = (
+            statistics.median(stats["estimated_revenues"])
+            if stats["estimated_revenues"]
+            else 0
+        )
+
+        summary.append(
+            (
+                tag_a,
+                tag_b,
+                games_count,
+                userscore_median,
+                playtime_mean,
+                playtime_75th,
+                price_median,
+                owners_median,
+                total_reviews_median,
+                calculated_owners_median,
+                estimated_revenue_median,
+            )
+        )
+
+    return summary
+
+
 def print_tag_analysis(
     summary: List[
         Tuple[str, int, float, float, float, float, float, float, float, float]
@@ -477,6 +631,37 @@ def print_tag_analysis(
         )
 
 
+def print_tag_pair_analysis(
+    summary: List[
+        Tuple[str, str, int, float, float, float, float, float, float, float, float]
+    ],
+) -> None:
+    """Print tag pair analysis in tab-delimited format."""
+    print(
+        "Tag A\tTag B\tGames Count\tUserscore (median)\tPlaytime (mean)\tPlaytime (75th percentile)\tPrice (median)\tOwners (median)\tTotal Reviews (median)\tCalculated Owners (median)\tEstimated Revenue (median)"
+    )
+
+    # Sort by games count descending
+    summary.sort(key=lambda x: x[2], reverse=True)
+
+    for (
+        tag_a,
+        tag_b,
+        games_count,
+        userscore_median,
+        playtime_mean,
+        playtime_75th,
+        price_median,
+        owners_median,
+        total_reviews_median,
+        calculated_owners_median,
+        estimated_revenue_median,
+    ) in summary:
+        print(
+            f"{tag_a}\t{tag_b}\t{games_count}\t{userscore_median:.1f}\t{playtime_mean:.0f}\t{playtime_75th:.0f}\t${price_median:.2f}\t{owners_median:.0f}\t{total_reviews_median:.0f}\t{calculated_owners_median:.0f}\t${estimated_revenue_median:,.0f}"
+        )
+
+
 def main() -> None:
     """Main function to run the scraper and analysis."""
     print("Starting SteamSpy scraper...")
@@ -503,6 +688,18 @@ def main() -> None:
     print(f"\nFound {len(summary)} unique tags")
     print("\nTag Analysis Results:")
     print_tag_analysis(summary)
+
+    # Phase 4: Analyze tag pairs
+    print("\nPhase 4: Analyzing tag pairs...")
+    tag_pair_stats = analyze_tag_pairs(detailed_games)
+
+    # Calculate tag pair summary
+    pair_summary = calculate_tag_pair_summary(tag_pair_stats)
+
+    # Print tag pair results
+    print(f"\nFound {len(pair_summary)} unique tag pairs")
+    print("\nTag Pair Analysis Results:")
+    print_tag_pair_analysis(pair_summary)
 
 
 if __name__ == "__main__":
